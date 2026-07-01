@@ -1,6 +1,6 @@
 """
 KHOA(국립해양조사원) 조위관측소 실측·예측 조위 API를 호출해서
-울진(후포)/삼척(묵호) 지역의 오늘~내일 만조·간조 시각을 계산하고
+울진(후포)/삼척(묵호)/영덕(포항) 지역의 오늘~내일 만조·간조 시각을 계산하고
 tide-data.json 파일로 저장하는 스크립트.
 
 GitHub Actions에서 매일 자동 실행됩니다.
@@ -41,30 +41,29 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
 
     data = json.loads(raw)
 
-    if "response" not in data:
-        # data.go.kr이 인증 오류 등을 다른 포맷으로 줄 때가 있음
-        err_header = data.get("cmmMsgHeader", {})
-        err_msg = err_header.get("returnAuthMsg") or err_header.get("errMsg") or str(data)[:200]
-        raise RuntimeError(f"API 오류 응답(비정상 포맷) [{obs_code} {date_str}]: {err_msg}")
+    # 실제 응답이 {"response": {...}} 형태이거나, {"header":..., "body":...}처럼
+    # 감싸는 껍데기 없이 바로 오는 경우가 둘 다 있어서 둘 다 처리한다.
+    payload = data.get("response", data)
 
-    header = data["response"]["header"]
-    if header["resultCode"] != "00":
-        raise RuntimeError(f"API 오류 [{obs_code} {date_str}]: {header['resultMsg']}")
+    header = payload.get("header")
+    if not header or header.get("resultCode") != "00":
+        err_msg = (header or {}).get("resultMsg") or str(data)[:200]
+        raise RuntimeError(f"API 오류 [{obs_code} {date_str}]: {err_msg}")
 
-    items = data["response"]["body"]["items"]
-    # items가 없거나 빈 문자열일 수 있음 (데이터 없음)
+    body = payload.get("body", {})
+    items = body.get("items")
     if not items or "item" not in items:
         return []
 
     item_list = items["item"]
-    if isinstance(item_list, dict):  # 결과가 1건이면 dict로 옴
+    if isinstance(item_list, dict):
         item_list = [item_list]
 
     points = []
     for it in item_list:
         try:
             t = datetime.strptime(it["obsrvnDt"], "%Y-%m-%d %H:%M")
-            h = float(it["tdlvHgt"])  # 예측조위(cm)
+            h = float(it["tdlvHgt"])
             points.append((t, h))
         except (KeyError, ValueError, TypeError):
             continue
