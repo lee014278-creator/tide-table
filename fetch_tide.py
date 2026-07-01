@@ -1,6 +1,6 @@
 """
 KHOA(국립해양조사원) 조위관측소 실측·예측 조위 API를 호출해서
-울진(후포)/삼척(묵호) 지역의 오늘~내일 만조·간조 시각을 계산하고
+울진(후포)/삼척(묵호)/영덕(포항) 지역의 앞으로 한 달치 만조·간조 시각을 계산하고
 tide-data.json 파일로 저장하는 스크립트.
 
 GitHub Actions에서 매일 자동 실행됩니다.
@@ -32,7 +32,7 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
         "reqDate": date_str,
         "min": "10",
         "pageNo": "1",
-        "numOfRows": "150",  # 24시간 / 10분 = 144개 + 여유
+        "numOfRows": "150",
     }
     url = API_BASE + "?" + urllib.parse.urlencode(params)
 
@@ -41,8 +41,6 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
 
     data = json.loads(raw)
 
-    # 실제 응답이 {"response": {...}} 형태이거나, {"header":..., "body":...}처럼
-    # 감싸는 껍데기 없이 바로 오는 경우가 둘 다 있어서 둘 다 처리한다.
     payload = data.get("response", data)
 
     header = payload.get("header")
@@ -52,19 +50,18 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
 
     body = payload.get("body", {})
     items = body.get("items")
-    # items가 없거나 빈 문자열일 수 있음 (데이터 없음)
     if not items or "item" not in items:
         return []
 
     item_list = items["item"]
-    if isinstance(item_list, dict):  # 결과가 1건이면 dict로 옴
+    if isinstance(item_list, dict):
         item_list = [item_list]
 
     points = []
     for it in item_list:
         try:
             t = datetime.strptime(it["obsrvnDt"], "%Y-%m-%d %H:%M")
-            h = float(it["tdlvHgt"])  # 예측조위(cm)
+            h = float(it["tdlvHgt"])
             points.append((t, h))
         except (KeyError, ValueError, TypeError):
             continue
@@ -82,7 +79,13 @@ def build_region_data(api_key: str, obs_code: str, base_date: datetime):
     for offset in range(DAYS_AHEAD):
         day_str = (base_date + timedelta(days=offset)).strftime("%Y%m%d")
         points += fetch_day(api_key, obs_code, day_str)
-    points.sort(key=lambda p: p[0])
+
+    # 하루 단위로 나눠 요청하다 보니 날짜 경계에서 같은 시각이 중복으로 겹쳐 들어올 수 있다.
+    # 같은 시각(timestamp) 값은 하나만 남기고 정리해서, 그로 인한 가짜 만조/간조 노이즈를 없앤다.
+    dedup = {}
+    for t, h in points:
+        dedup[t] = h
+    points = sorted(dedup.items(), key=lambda p: p[0])
 
     extrema_with_date = []
     for i in range(1, len(points) - 1):
@@ -102,7 +105,23 @@ def build_region_data(api_key: str, obs_code: str, base_date: datetime):
                 "height_cm": round(cur_h, 1),
             })
 
-    return extrema_with_date
+    # 만조/간조는 보통 6시간 이상 간격으로 발생한다.
+    # 3시간 미만 간격으로 몰려있으면 잡음일 가능성이 높으므로, 더 극단적인 값만 남긴다.
+    cleaned = []
+    for e in extrema_with_date:
+        cur_dt = datetime.strptime(e["date"] + " " + e["time"], "%Y-%m-%d %H:%M")
+        if cleaned:
+            prev = cleaned[-1]
+            prev_dt = datetime.strptime(prev["date"] + " " + prev["time"], "%Y-%m-%d %H:%M")
+            if (cur_dt - prev_dt).total_seconds() < 3 * 3600 and prev["type"] == e["type"]:
+                if e["type"] == "만조" and e["height_cm"] > prev["height_cm"]:
+                    cleaned[-1] = e
+                elif e["type"] == "간조" and e["height_cm"] < prev["height_cm"]:
+                    cleaned[-1] = e
+                continue
+        cleaned.append(e)
+
+    return cleaned
 
 
 def main():
@@ -110,7 +129,7 @@ def main():
     if not api_key:
         raise SystemExit("환경변수 KHOA_API_KEY가 설정되지 않았습니다.")
 
-    now_kst = datetime.utcnow() + timedelta(hours=9)  # KST 보정
+    now_kst = datetime.utcnow() + timedelta(hours=9)
     today = datetime(now_kst.year, now_kst.month, now_kst.day)
 
     result = {
