@@ -1,6 +1,6 @@
 """
 KHOA(국립해양조사원) 조위관측소 실측·예측 조위 API를 호출해서
-울진(후포)/삼척(묵호)/영덕(포항) 지역의 오늘~내일 만조·간조 시각을 계산하고
+울진(후포)/삼척(묵호) 지역의 오늘~내일 만조·간조 시각을 계산하고
 tide-data.json 파일로 저장하는 스크립트.
 
 GitHub Actions에서 매일 자동 실행됩니다.
@@ -52,18 +52,19 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
 
     body = payload.get("body", {})
     items = body.get("items")
+    # items가 없거나 빈 문자열일 수 있음 (데이터 없음)
     if not items or "item" not in items:
         return []
 
     item_list = items["item"]
-    if isinstance(item_list, dict):
+    if isinstance(item_list, dict):  # 결과가 1건이면 dict로 옴
         item_list = [item_list]
 
     points = []
     for it in item_list:
         try:
             t = datetime.strptime(it["obsrvnDt"], "%Y-%m-%d %H:%M")
-            h = float(it["tdlvHgt"])
+            h = float(it["tdlvHgt"])  # 예측조위(cm)
             points.append((t, h))
         except (KeyError, ValueError, TypeError):
             continue
@@ -72,13 +73,15 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
     return points
 
 
-def build_region_data(api_key: str, obs_code: str, base_date: datetime):
-    """오늘 + 내일 이틀치 데이터를 합쳐서 만조/간조 리스트를 만든다."""
-    today_str = base_date.strftime("%Y%m%d")
-    tomorrow_str = (base_date + timedelta(days=1)).strftime("%Y%m%d")
+DAYS_AHEAD = 30  # 오늘 포함 앞으로 며칠치를 가져올지
 
-    points = fetch_day(api_key, obs_code, today_str)
-    points += fetch_day(api_key, obs_code, tomorrow_str)
+
+def build_region_data(api_key: str, obs_code: str, base_date: datetime):
+    """오늘부터 DAYS_AHEAD일치 데이터를 합쳐서 만조/간조 리스트를 만든다."""
+    points = []
+    for offset in range(DAYS_AHEAD):
+        day_str = (base_date + timedelta(days=offset)).strftime("%Y%m%d")
+        points += fetch_day(api_key, obs_code, day_str)
     points.sort(key=lambda p: p[0])
 
     extrema_with_date = []
@@ -88,9 +91,9 @@ def build_region_data(api_key: str, obs_code: str, base_date: datetime):
         next_h = points[i + 1][1]
         kind = None
         if cur_h >= prev_h and cur_h >= next_h and cur_h > prev_h:
-            kind = "고조"
+            kind = "만조"
         elif cur_h <= prev_h and cur_h <= next_h and cur_h < prev_h:
-            kind = "저조"
+            kind = "간조"
         if kind:
             extrema_with_date.append({
                 "type": kind,
