@@ -1,0 +1,91 @@
+<div id="tide-widget-wrap" style="max-width:480px;margin:24px auto;font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+
+  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:22px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.05);">
+
+    <h3 id="tide-title" style="margin:0 0 2px 0;font-size:19px;font-weight:700;color:#111827;">오늘의 물때</h3>
+    <p id="tide-updated" style="margin:0 0 16px 0;font-size:12px;color:#9ca3af;">불러오는 중...</p>
+
+    <div id="tide-body">
+      <p style="text-align:center;color:#9ca3af;font-size:14px;padding:20px 0;">물때 정보를 불러오는 중이에요...</p>
+    </div>
+
+    <p id="tide-tip" style="margin:14px 0 0 0;font-size:12.5px;line-height:1.5;color:#6b7280;background:#f0f9ff;border-radius:8px;padding:10px 12px;"></p>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  // ⚠️ 이 글에 맞게 두 값만 확인/수정하세요
+  var TIDE_JSON_URL = 'https://lee014278-creator.github.io/REPO_NAME_HERE/tide-data.json';
+  var REGION = 'uljin'; // 이 글의 지역: 울진 글='uljin' / 삼척 글='samcheok' / 영덕 글='yeongdeok'
+
+  var REGION_TITLES = {
+    uljin: '울진 오늘의 물때',
+    samcheok: '삼척 오늘의 물때',
+    yeongdeok: '영덕 오늘의 물때'
+  };
+  document.getElementById('tide-title').textContent = REGION_TITLES[REGION] || '오늘의 물때';
+
+  function tideRender(data){
+    var body = document.getElementById('tide-body');
+    var tip = document.getElementById('tide-tip');
+
+    if(!data){
+      body.innerHTML = '<p style="text-align:center;color:#ef4444;font-size:14px;padding:20px 0;">물때 정보를 불러오지 못했어요. 잠시 후 다시 시도해주세요.</p>';
+      return;
+    }
+
+    var region = data.regions[REGION];
+    if(!region){
+      body.innerHTML = '<p style="text-align:center;color:#ef4444;font-size:14px;padding:20px 0;">지역 데이터를 찾을 수 없어요.</p>';
+      return;
+    }
+
+    var todayStr = new Date().toISOString().slice(0,10);
+    var events = (region.events || []).filter(function(e){ return e.date === todayStr; });
+
+    if(events.length === 0){
+      body.innerHTML = '<p style="text-align:center;color:#9ca3af;font-size:14px;padding:20px 0;">오늘 데이터가 아직 없어요.</p>';
+      tip.textContent = '';
+      return;
+    }
+
+    var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+    events.forEach(function(e){
+      var isHigh = e.type === '고조';
+      var badgeColor = isHigh ? '#2563eb' : '#059669';
+      var badgeBg = isHigh ? '#eff6ff' : '#ecfdf5';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f9fafb;border-radius:10px;">';
+      html += '  <div style="display:flex;align-items:center;gap:8px;">';
+      html += '    <span style="font-size:12px;font-weight:700;color:' + badgeColor + ';background:' + badgeBg + ';padding:3px 8px;border-radius:6px;">' + e.type + '</span>';
+      html += '    <span style="font-size:16px;font-weight:700;color:#111827;">' + e.time + '</span>';
+      html += '  </div>';
+      html += '  <span style="font-size:13px;color:#6b7280;">' + e.height_cm + 'cm</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<p style="margin:10px 0 0 0;font-size:11px;color:#9ca3af;">기준: ' + region.obs_name + ' 관측소 · ' + region.label + '</p>';
+    body.innerHTML = html;
+
+    var lowTides = events.filter(function(e){ return e.type === '저조'; });
+    if(lowTides.length > 0){
+      var times = lowTides.map(function(e){ return e.time; }).join(', ');
+      tip.textContent = '🤿 물이 가장 많이 빠지는 저조 시간(' + times + ') 전후 1~2시간이 스노클링하기에 물이 얕고 시야가 좋아요. 다만 그날 파고·기상 상황도 함께 확인하세요.';
+    } else {
+      tip.textContent = '';
+    }
+  }
+
+  fetch(TIDE_JSON_URL, {cache: 'no-store'})
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      document.getElementById('tide-updated').textContent = '업데이트: ' + data.updated_at;
+      tideRender(data);
+    })
+    .catch(function(){
+      document.getElementById('tide-updated').textContent = '';
+      tideRender(null);
+    });
+})();
+</script>
