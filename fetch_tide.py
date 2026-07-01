@@ -24,15 +24,15 @@ STATIONS = {
 
 
 def fetch_day(api_key: str, obs_code: str, date_str: str):
-    """특정 관측소, 특정 날짜의 10분 간격 예측조위 데이터를 가져온다."""
+    """특정 날짜의 1시간 간격 예측조위 데이터를 가져온다."""
     params = {
         "serviceKey": api_key,
         "type": "json",
         "obsCode": obs_code,
         "reqDate": date_str,
-        "min": "10",
+        "min": "60",
         "pageNo": "1",
-        "numOfRows": "150",  # 24시간 / 10분 = 144개 + 여유
+        "numOfRows": "30",  # 24시간 / 60분 = 24개 + 여유
     }
     url = API_BASE + "?" + urllib.parse.urlencode(params)
 
