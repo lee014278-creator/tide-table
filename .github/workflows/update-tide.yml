@@ -1,1 +1,34 @@
+name: Update Tide Data
 
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-tide:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 조위 데이터 수집
+        env:
+          KHOA_API_KEY: ${{ secrets.KHOA_API_KEY }}
+        run: python fetch_tide.py
+
+      - name: 변경사항 커밋 & 푸시
+        run: |
+          git config user.name "tide-bot"
+          git config user.email "tide-bot@users.noreply.github.com"
+          git add tide-data.json
+          git diff --staged --quiet || git commit -m "물때 데이터 자동 갱신 $(date +'%Y-%m-%d %H:%M')"
+          git push
