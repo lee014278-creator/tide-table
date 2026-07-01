@@ -40,6 +40,13 @@ def fetch_day(api_key: str, obs_code: str, date_str: str):
         raw = resp.read().decode("utf-8")
 
     data = json.loads(raw)
+
+    if "response" not in data:
+        # data.go.kr이 인증 오류 등을 다른 포맷으로 줄 때가 있음
+        err_header = data.get("cmmMsgHeader", {})
+        err_msg = err_header.get("returnAuthMsg") or err_header.get("errMsg") or str(data)[:200]
+        raise RuntimeError(f"API 오류 응답(비정상 포맷) [{obs_code} {date_str}]: {err_msg}")
+
     header = data["response"]["header"]
     if header["resultCode"] != "00":
         raise RuntimeError(f"API 오류 [{obs_code} {date_str}]: {header['resultMsg']}")
