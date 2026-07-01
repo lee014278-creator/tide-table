@@ -1,0 +1,20 @@
+{
+  "updated_at": "2026-07-01 14:29 KST",
+  "regions": {
+    "uljin": {
+      "label": "울진 (후포 기준)",
+      "obs_name": "후포",
+      "events": []
+    },
+    "samcheok": {
+      "label": "삼척 (묵호 기준)",
+      "obs_name": "묵호",
+      "events": []
+    },
+    "yeongdeok": {
+      "label": "영덕 (포항 기준)",
+      "obs_name": "포항",
+      "events": []
+    }
+  }
+}
